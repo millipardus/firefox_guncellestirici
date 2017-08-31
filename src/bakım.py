@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys, os, shutil, urllib, re, tarfile
+import sys, os, shutil, urllib, re, tarfile, time
 from bs4 import BeautifulSoup as bs
 from datetime import datetime as tarih
 
@@ -125,8 +125,20 @@ class YAZILIM:
                 
                 
 class Araclar:
+    sizeOfFile = 0
+    saveTime = 0
+    saveTime_ = 0
+    bytesList = []
+    counter = 0
+    def findUserDir(self):
+        res = os.popen('users').read().strip().split(' ')[0]
+        if res == "root":
+            return "/root/"
+        else:
+            return '/home/' + res + '/'
+    
     def rescueFromFolder(self, folder, rescueMode=1):
-        self.Kullanici_Dizini =  '/home/' + os.popen('users').read().split(' ')[0] + '/'
+        self.Kullanici_Dizini =  self.findUserDir()
         self.print_("Sistemdeki firefox dizini tespit ediliyor.. Bekleyin...")
         
         TespitDizini, firefoxDizini, firefoxYalnizcaDizin = self.detectFirefoxFolder()
@@ -142,10 +154,13 @@ class Araclar:
             
         else:
             self.print_("Firefox dizini tespit edilemedi.")
-            firefoxDizini = raw_input("Lütfen sisteminizdeki firefox dizinini giriniz : ")
+            firefoxDizini = raw_input("Lütfen sisteminizdeki firefox dizinini girin : ")
             self.IFADELER.append("%s: Girilen firefox dizini : %s"%(str(tarih.now()), firefoxDizini))
             firefoxYalnizcaDizin = firefoxDizini.split('/')[-1]
         
+        permis = raw_input("Belirtilen dizindeki tüm dosyalar yedeklendikten sonra silinecektir. Onay? [e/h] > ")
+        if permis.lower() != 'e':
+            sys.exit()
         
         self.print_("%s dizini yedek amaçlı kullanıcı dizinine kopyalanıyor.. Bekleyin..." %firefoxYalnizcaDizin)
         
@@ -242,7 +257,10 @@ class Araclar:
         print(msg)
         
     def detectFirefoxFolder(self):
-        folder = os.path.dirname(os.popen("readlink -f %s" %(os.popen("whereis firefox").read().strip().split()[1])).read().strip())
+        getRes = os.popen("whereis firefox").read().strip().split()[1]
+        folder = os.path.dirname(os.popen("readlink -f %s" %(getRes)).read().strip())
+        if folder == getRes:
+            folder = ""
         if self.confirmFolder(folder):
             return (folder, folder, os.path.basename(folder))
     
@@ -264,6 +282,7 @@ class Araclar:
         
     
     def confirmFolder(self, folder):
+        getRes = os.popen("whereis firefox").read().strip().split()[1]
         if not os.path.exists(folder):
             return 0
         
@@ -278,8 +297,8 @@ class Araclar:
         
         totalNumber = fileNumber+folderNumber
         if totalNumber > 40 and len(os.listdir(folder)) > 20 and size > 1024*1024*15:
-            if "run-mozilla.sh" in os.listdir(folder) or "firefox" in os.listdir(folder) or "firefox-bin" in os.listdir(folder):
-                if folder == os.path.dirname(os.popen("readlink -f %s" %os.popen("whereis firefox").read().strip().split()[1]).read().strip()):
+            if "run-mozilla.sh" in os.listdir(folder) and ("firefox" in os.listdir(folder) or "firefox-bin" in os.listdir(folder)):
+                if folder == os.path.dirname(os.popen("readlink -f %s" %getRes).read().strip()):
                     return 1
                 
                 
@@ -324,6 +343,101 @@ class Araclar:
         with open(KayitDosyasi, 'a') as Dosya:
             for i in IFADELER:
                 Dosya.write(str(i) + '\n')
+    
+    def optimization(self, bytes):
+        if bytes >= 1024 and bytes < 1048576:
+            return "%.2f" %(bytes/1024.0), "KiB"
+        if bytes >= 1048576 and bytes < 1073741824:
+            return "%.2f" %(bytes/1024.0/1024), "MiB"
+        if bytes >= 1073741824:
+            return "%.2f" %(bytes/1024.0/1024/1024), "GiB"
+        elif bytes < 1024:
+            return bytes, "bytes"
+    
+    def timeOptimization(self, seconds):
+        if seconds >= 60 and seconds < 3600:
+            return "%s dk. %s sn." %(int(seconds)/60, seconds-(int(seconds)/60*60))
+        if seconds >= 3600:
+            return "%s saat %s dk. %s sn." %(int(seconds)/60/60, int(seconds-(int(seconds)/60/60*60*60))/60, seconds-(int(seconds-(int(seconds)/60/60*60*60))/60*60))
+        else:
+            return "%s sn." %(seconds)
+    
+    def report(self, count, bs, ts):
+        elapsedTime = time.time() - self.saveTime        
+        bfrdownloaded = count*bs - self.sizeOfFile
+        
+        per = 100.0*count*bs/ts
+        if per > 100: per = 100
+        per = "%.2f" %per
+        
+        
+        
+        sys.stdout.write("\r%")
+        sys.stdout.write(per)
+        sys.stdout.write ("  |  ")
+        #sys.stdout.write("\b"*(len(per)+1))
+        
+        seconds = 0
+        dwnbytes = 0
+        for size, sec in self.bytesList:
+            seconds += sec
+            dwnbytes += size
+        
+        #print self.bytesList
+        
+        remainingSec = 0
+        
+        if seconds != 0: 
+            bytesPerSecond = float(dwnbytes)/seconds
+            try:
+                remainingSec = float(ts - count*bs)/bytesPerSecond
+            except: pass
+        else: bytesPerSecond = 0
+        
+        
+        
+        bps = self.optimization(bytesPerSecond)
+        bps = "%s %s/saniye" %(bps[0], bps[1])
+        sys.stdout.write(bps)
+        
+        
+        remaining = " | %s kaldı.                     " %self.timeOptimization(int(remainingSec))
+        sys.stdout.write(remaining)
+        
+        """if elapsedTime > 5:
+            self.saveTime = time.time()
+            
+            
+        
+        if elapsedTime_ > 1:
+            self.saveTime_ = time.time()
+            bytesPerSecond = float(downloadedSize)/elapsedTime
+            bps = self.optimization(bytesPerSecond)
+            bps = "%s %s" %(bps[0], bps[1])
+            
+            
+            sys.stdout.write(bps)
+            
+            #sys.stdout.write("\b"*(len(bps)+1))
+            
+            self.sizeOfFile = count*bs"""
+        
+        if elapsedTime > 1:
+            self.saveTime = time.time()
+            self.sizeOfFile = count*bs
+            if len(self.bytesList) < 5:
+                self.bytesList.append((bfrdownloaded, elapsedTime))
+            elif len(self.bytesList) == 5:
+                self.bytesList[self.counter] = (bfrdownloaded, elapsedTime)
+                self.counter += 1
+        
+            if self.counter == 5:
+                self.counter = 0
+            
+            
+        
+        
+    
     def Guncellestir(self, KayitDosyasi, KayitDurumu, surum, Adres="", fromFile=0):
         self.KayitDurumu = KayitDurumu
         self.KayitDosyasi = KayitDosyasi
@@ -333,7 +447,7 @@ class Araclar:
         self.IFADELER = []
         
         self.ILKDIZIN = os.getcwd()
-        self.Kullanici_Dizini =  '/home/' + os.popen('users').read().split(' ')[0] + '/'
+        self.Kullanici_Dizini =  self.findUserDir()
         os.chdir(self.Kullanici_Dizini)
         self.Olusturulan_Dosyalar= []
         
@@ -344,8 +458,14 @@ class Araclar:
             if not Adres == "":
                 self.print_("Firefox indiriliyor...")
                 self.print_("Bağlanılıyor %s" %Adres)
-                urllib.urlretrieve('%s' %Adres, 'firefox.tar.gz')
+                self.saveTime = time.time()
+                try:
+                    urllib.urlretrieve('%s' %Adres, 'firefox.tar.gz', reporthook=self.report)
+                except KeyboardInterrupt:
+                    self.print_("Ctrl+C")
+                    self.Cikis()
                 self.Olusturulan_Dosyalar.append(os.getcwd() + os.sep + 'firefox.tar.gz')
+                print
                 self.print_("Dosya indirildi... İndirilen dosya çıkartılıyor... Bekleyin...")
                 self.fileToExtract = "firefox.tar.gz"
             else:
@@ -359,7 +479,13 @@ class Araclar:
                 elif self.Bilgi_Al() == "x86_64":
                     Adres = "https://download.mozilla.org/?product=firefox-%s-SSL&os=linux64&lang=tr" %surum
                 self.print_("Bağlanılıyor %s" %Adres)
-                urllib.urlretrieve(Adres, 'firefox.tar.gz')
+                self.saveTime = time.time()
+                try:
+                    urllib.urlretrieve(Adres, 'firefox.tar.gz', reporthook=self.report)
+                except KeyboardInterrupt:
+                    self.print_("Ctrl+C")
+                    self.Cikis()
+                print
                 self.Olusturulan_Dosyalar.append(os.getcwd() + os.sep + 'firefox.tar.gz')
                 self.print_("Dosya indirildi. İndirilen dosya çıkartılıyor... Bekleyin.")
                 self.fileToExtract = "firefox.tar.gz"
